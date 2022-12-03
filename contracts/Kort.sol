@@ -56,7 +56,7 @@ contract Kort is ReentrancyGuard, ERC721URIStorage {
         string[] options;
         Status status;
         address[] voters;
-        address[] claims;
+        mapping(address => bool) claims;
         int256 final_decision;
         uint256 finalisedAt;
         uint256 totalWinningVotes;
@@ -84,19 +84,17 @@ contract Kort is ReentrancyGuard, ERC721URIStorage {
         //todo take user case fee
         kortToken.transfer(owner, chargeFee * (10**DECIMALS), msg.sender);
         caseID.increment();
+        Case storage currCase = cases[caseID.current()];
+        currCase.caseID = caseID.current();
+        currCase.from = msg.sender;
+        currCase.against = _against;
+        currCase.options = options;
+        currCase.status = Status.WAITING_FOR_APPROVAL;
+        currCase.final_decision = -1;
+        currCase.finalisedAt = 0;
+        currCase.totalWinningVotes = 0;
 
-        cases[caseID.current()] = Case(
-            caseID.current(),
-            msg.sender,
-            _against,
-            options,
-            Status.WAITING_FOR_APPROVAL,
-            new address[](0),
-            new address[](0),
-            -1,
-            0,
-            0
-        );
+        emit CaseFile(msg.sender, _against, caseID.current());
     }
 
     // function file a case
@@ -174,22 +172,38 @@ contract Kort is ReentrancyGuard, ERC721URIStorage {
         cases[_caseId].totalWinningVotes = uint256(maxvote);
     }
 
-    function claimStake(uint256 caseID) public {
-        require(cases[caseID].status == Status.FINALISED, "case not finalised");
-        require(cases[caseID].final_decision > 0, "case not won");
-        require(cases[caseID].claims == false, "already claimed");
-        kortToken.transfer(
-            msg.sender,
-            stakeHolders[msg.sender] * (10**DECIMALS),
-            owner
-        );
-        totalStaked = totalStaked - stakeHolders[msg.sender];
-        stakeHolders[msg.sender] = 0;
-        voters[msg.sender] = false;
+    function claimStake(uint256 caseId) public {
+        require(cases[caseId].status == Status.FINALISED, "case not finalised");
+        require(cases[caseId].final_decision > 0, "case not won");
+        require(cases[caseId].claims[msg.sender] == false, "already claimed");
+        uint256 claim = (getVotes(caseId, msg.sender).votingPowerAllocated *
+            2 *
+            chargeFee *
+            10**DECIMALS) / cases[caseId].totalWinningVotes;
+
+        kortToken.transfer(msg.sender, claim, owner);
+        cases[caseId].claims[msg.sender] = true;
     }
 
     function getStake(address user) public view returns (uint256) {
         return stakeHolders[user];
+    }
+
+    function getVotes(uint256 caseId, address addy)
+        public
+        view
+        returns (Votes memory)
+    {
+        //check if case finalised
+        require(cases[caseId].status == Status.FINALISED);
+
+        Votes memory vote;
+        for (uint256 i = 0; i < votemap[caseId].length; i++) {
+            if (votemap[caseId][i].voter == addy) {
+                vote = votemap[caseId][i];
+            }
+        }
+        return vote;
     }
 
     /*     function getMessageHash(string memory _message, uint256 _nonce)
