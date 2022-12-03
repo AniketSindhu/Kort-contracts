@@ -65,6 +65,7 @@ contract Kort is ReentrancyGuard, ERC721URIStorage {
         address voter;
         uint256 option;
         uint256 votingPowerAllocated;
+        string reason;
     }
 
     mapping(uint256 => Case) public cases;
@@ -126,13 +127,13 @@ contract Kort is ReentrancyGuard, ERC721URIStorage {
     function stake(uint256 stakeAmt) public {
         require(voters[msg.sender] == false, "already a voter");
         require(stakeAmt >= stakeFee, "staking amt is not enough");
-        kortToken.transfer(owner, stakeAmt * (10**DECIMALS), msg.sender);
+        kortToken.transfer(owner, stakeAmt, msg.sender);
         totalStaked = totalStaked + stakeAmt;
         stakeHolders[msg.sender] = stakeAmt;
         voters[msg.sender] = true;
     }
 
-    function voting(uint256 _caseId, uint256 option) public {
+    function voting(uint256 _caseId, uint256 option, string memory _reason) public {
         require(voters[msg.sender] == true, "you are not a voter");
         Case storage currCase = cases[_caseId];
         require(currCase.status == Status.APPROVED, "case not approved");
@@ -142,7 +143,7 @@ contract Kort is ReentrancyGuard, ERC721URIStorage {
             "invalid option"
         );
 
-        Votes memory currVote = Votes(msg.sender, option, getStake(msg.sender));
+        Votes memory currVote = Votes(msg.sender, option, getStake(msg.sender),_reason);
         votemap[_caseId].push(currVote);
     }
 
@@ -166,6 +167,20 @@ contract Kort is ReentrancyGuard, ERC721URIStorage {
                 maxvoteindex = int256(i);
             }
         }
+
+        address[] losers;
+        for (uint256 i = 0; i < votemap[_caseId].length; i++) {
+            if(votemap[_caseId][i].option != (maxvoteindex) ){
+                losers.push(votemap[_caseId][i].voter);
+            }
+        }
+
+        for(uint256 i = 0; i < losers.length; i++){
+            stakeHolders[losers[i]] -= 0.1*(stakeHolders[losers[i]]);
+            
+            burnFrom(losers[i],0.1*(stakeHolders[losers[i]]));
+        }
+
 
         cases[_caseId].final_decision = maxvoteindex;
         cases[_caseId].status = Status.FINALISED;
