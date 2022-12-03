@@ -31,9 +31,8 @@ contract Kort is ReentrancyGuard, ERC721URIStorage {
         kortToken = _token;
     }
 
-    modifier OwnerOnly
-    {
-        require(  msg.sender == owner);
+    modifier OwnerOnly() {
+        require(msg.sender == owner);
         _;
     }
 
@@ -57,8 +56,10 @@ contract Kort is ReentrancyGuard, ERC721URIStorage {
         string[] options;
         Status status;
         address[] voters;
+        address[] claims;
         int256 final_decision;
         uint256 finalisedAt;
+        uint256 totalWinningVotes;
     }
     struct Votes {
         address voter;
@@ -66,11 +67,9 @@ contract Kort is ReentrancyGuard, ERC721URIStorage {
         uint256 votingPowerAllocated;
     }
 
-    
-
     mapping(uint256 => Case) public cases;
     mapping(address => bool) public voters;
-    mapping(address => uint) public stakeHolders;
+    mapping(address => uint256) public stakeHolders;
     mapping(uint256 => Votes[]) public votemap;
 
     // start case
@@ -93,7 +92,9 @@ contract Kort is ReentrancyGuard, ERC721URIStorage {
             options,
             Status.WAITING_FOR_APPROVAL,
             new address[](0),
+            new address[](0),
             -1,
+            0,
             0
         );
     }
@@ -143,39 +144,53 @@ contract Kort is ReentrancyGuard, ERC721URIStorage {
             "invalid option"
         );
 
-    Votes memory currVote = Votes(msg.sender, option, getStake(msg.sender));
+        Votes memory currVote = Votes(msg.sender, option, getStake(msg.sender));
         votemap[_caseId].push(currVote);
     }
 
-    function endCase(uint _caseId) public OwnerOnly{
-       
-        require(cases[_caseId].finalisedAt <= block.timestamp,"voting in progress");
-        require(cases[_caseId].status == Status.APPROVED,"case not approved");
+    function endCase(uint256 _caseId) public OwnerOnly {
+        require(
+            cases[_caseId].finalisedAt <= block.timestamp,
+            "voting in progress"
+        );
+        require(cases[_caseId].status == Status.APPROVED, "case not approved");
         int256[] memory votes = new int256[](cases[_caseId].options.length);
-        for(uint i=0;i<votemap[_caseId].length;i++){
-            votes[votemap[_caseId][i].option ] = votes[votemap[_caseId][i].option] + 1;
+        for (uint256 i = 0; i < votemap[_caseId].length; i++) {
+            votes[votemap[_caseId][i].option] =
+                votes[votemap[_caseId][i].option] +
+                int256(votemap[_caseId][i].votingPowerAllocated);
         }
-        int maxvote = -1;
-        for(uint i=0;i<votes.length;i++){
-            if(votes[i] > maxvote){
+        int256 maxvote = -1;
+        int256 maxvoteindex = 0;
+        for (uint256 i = 0; i < votes.length; i++) {
+            if (votes[i] > maxvote) {
                 maxvote = votes[i];
+                maxvoteindex = int256(i);
             }
         }
 
-        cases[_caseId].final_decision = 
-        
+        cases[_caseId].final_decision = maxvoteindex;
+        cases[_caseId].status = Status.FINALISED;
+        cases[_caseId].totalWinningVotes = uint256(maxvote);
+    }
 
-
-        
-    } 
-
+    function claimStake(uint256 caseID) public {
+        require(cases[caseID].status == Status.FINALISED, "case not finalised");
+        require(cases[caseID].final_decision > 0, "case not won");
+        require(cases[caseID].claims == false, "already claimed");
+        kortToken.transfer(
+            msg.sender,
+            stakeHolders[msg.sender] * (10**DECIMALS),
+            owner
+        );
+        totalStaked = totalStaked - stakeHolders[msg.sender];
+        stakeHolders[msg.sender] = 0;
+        voters[msg.sender] = false;
+    }
 
     function getStake(address user) public view returns (uint256) {
         return stakeHolders[user];
-    } 
-
-
-
+    }
 
     /*     function getMessageHash(string memory _message, uint256 _nonce)
         internal
