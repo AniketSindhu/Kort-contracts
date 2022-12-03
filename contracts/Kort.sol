@@ -11,12 +11,12 @@ import "@openzeppelin/contracts/utils/Counters.sol";
 
 contract Kort is ReentrancyGuard, ERC721URIStorage {
     address public owner; // one who created the contract
-    uint256 public chargeFee;
-    uint256 public stakeFee;
-    uint256 public totalStaked = 0;
+    uint256 public chargeFee; // charge pay to raise a case
+    uint256 public stakeFee; // min charge pay to be a jury
+    uint256 public totalStaked = 0; // total staking of the system
     using Counters for Counters.Counter;
-    Counters.Counter private caseID;
-    KortToken public kortToken;
+    Counters.Counter private caseID; // counter for cases
+    KortToken public kortToken; // instance of Token
 
     uint256 constant DECIMALS = 8;
 
@@ -36,12 +36,14 @@ contract Kort is ReentrancyGuard, ERC721URIStorage {
         _;
     }
 
+    // Status of case filing enum
     enum Status {
         WAITING_FOR_APPROVAL,
         APPROVED,
         FINALISED
     }
 
+    // caseFile event 
     event CaseFile(
         address indexed _from,
         address indexed _against,
@@ -53,25 +55,26 @@ contract Kort is ReentrancyGuard, ERC721URIStorage {
         uint256 caseID;
         address from;
         address against;
-        string[] options;
-        Status status;
-        address[] voters;
-        mapping(address => bool) claims;
-        int256 final_decision;
-        uint256 finalisedAt;
-        uint256 totalWinningVotes;
+        string[] options;  // basically here user will add possible resolves
+        Status status; // status of the case
+        address[] voters; // array of voters
+        mapping(address=>uint) votings; // who voted
+        mapping(address => bool) claims; // claims taken status
+        int256 final_decision; // final selected option
+        uint256 finalisedAt; // unix time for case end time
+        uint256 totalWinningVotes; 
     }
     struct Votes {
         address voter;
         uint256 option;
-        uint256 votingPowerAllocated;
+        uint256 votingPowerAllocated; 
         string reason;
     }
 
-    mapping(uint256 => Case) public cases;
-    mapping(address => bool) public voters;
-    mapping(address => uint256) public stakeHolders;
-    mapping(uint256 => Votes[]) public votemap;
+    mapping(uint256 => Case) public cases;  // cases 
+    mapping(address => bool) public voters; //  is voter
+    mapping(address => uint256) public stakeHolders; // how much stake
+    mapping(uint256 => Votes[]) public votemap; // caseID ==> array of Votes
 
     // start case
     function proposeCase(address _against, string[] memory options)
@@ -92,8 +95,8 @@ contract Kort is ReentrancyGuard, ERC721URIStorage {
         currCase.options = options;
         currCase.status = Status.WAITING_FOR_APPROVAL;
         currCase.final_decision = -1;
-        currCase.finalisedAt = 0;
-        currCase.totalWinningVotes = 0;
+        currCase.finalisedAt = 0; // 0 because it is not started yet 
+        currCase.totalWinningVotes = 0; // total volume(value) of votes is 0 initially
 
         emit CaseFile(msg.sender, _against, caseID.current());
     }
@@ -104,7 +107,7 @@ contract Kort is ReentrancyGuard, ERC721URIStorage {
         nonReentrant
     {
         //check if case exists
-        require(cases[caseId].caseID != 0, "Case does not exist");
+        require(cases[caseId].caseID != 0 , "Case does not exist");
         //check if case is already approved
         require(
             cases[caseId].status == Status.WAITING_FOR_APPROVAL,
@@ -114,7 +117,7 @@ contract Kort is ReentrancyGuard, ERC721URIStorage {
         kortToken.transfer(owner, chargeFee * (10**DECIMALS), msg.sender);
 
         cases[caseId].status = Status.APPROVED;
-        cases[caseId].finalisedAt = block.timestamp + 7 days;
+        cases[caseId].finalisedAt = block.timestamp + 7 days; // now finalise time is setted
 
         //Minting NFT
         _safeMint(msg.sender, caseID.current());
@@ -135,6 +138,7 @@ contract Kort is ReentrancyGuard, ERC721URIStorage {
 
     function voting(uint256 _caseId, uint256 option, string memory _reason) public {
         require(voters[msg.sender] == true, "you are not a voter");
+        require(cases[_caseId].voting[msg.sender] == 0,"you already voted");
         Case storage currCase = cases[_caseId];
         require(currCase.status == Status.APPROVED, "case not approved");
         require(currCase.finalisedAt > block.timestamp, "case expired");
@@ -142,6 +146,8 @@ contract Kort is ReentrancyGuard, ERC721URIStorage {
             currCase.options.length > option && option > 0,
             "invalid option"
         );
+
+        currCase.voting[msg.sender] = 1;
 
         Votes memory currVote = Votes(msg.sender, option, getStake(msg.sender),_reason);
         votemap[_caseId].push(currVote);
@@ -154,6 +160,8 @@ contract Kort is ReentrancyGuard, ERC721URIStorage {
         );
         require(cases[_caseId].status == Status.APPROVED, "case not approved");
         int256[] memory votes = new int256[](cases[_caseId].options.length);
+        // one thing  to note options must be start from zero .. 0 ,1,2...
+        
         for (uint256 i = 0; i < votemap[_caseId].length; i++) {
             votes[votemap[_caseId][i].option] =
                 votes[votemap[_caseId][i].option] +
@@ -168,8 +176,9 @@ contract Kort is ReentrancyGuard, ERC721URIStorage {
             }
         }
 
-        address[] losers;
+        address[] memory losers;
         for (uint256 i = 0; i < votemap[_caseId].length; i++) {
+            // like asking 0 option == index of max which is also same as the option number
             if(votemap[_caseId][i].option != (maxvoteindex) ){
                 losers.push(votemap[_caseId][i].voter);
             }
@@ -190,6 +199,7 @@ contract Kort is ReentrancyGuard, ERC721URIStorage {
     function claimStake(uint256 caseId) public {
         require(cases[caseId].status == Status.FINALISED, "case not finalised");
         require(cases[caseId].final_decision > 0, "case not won");
+        require(cases[caseId].voters[msg.sender] == 1,"you not vorted" );
         require(cases[caseId].claims[msg.sender] == false, "already claimed");
         uint256 claim = (getVotes(caseId, msg.sender).votingPowerAllocated *
             2 *
@@ -219,6 +229,13 @@ contract Kort is ReentrancyGuard, ERC721URIStorage {
             }
         }
         return vote;
+    }
+
+    function withdrawStake() public{
+        require(voter[msg.sender],"you are not a voter");
+        kortToken.tranfer(msg.sender,stakeHolders[msg.sender],owner);
+        stakeHolders[msg.sender] = 0;
+        voters[msg.sender] = false;
     }
 
     /*     function getMessageHash(string memory _message, uint256 _nonce)
