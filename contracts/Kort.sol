@@ -111,7 +111,7 @@ contract Kort is ReentrancyGuard, ERC721URIStorage {
             )
         )
     );
-
+    }
     // start case
     function proposeCase(address _against, string[] memory options)
         public
