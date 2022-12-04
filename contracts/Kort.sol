@@ -15,11 +15,6 @@ interface IPUSHCommInterface {
     function sendNotification(address _channel, address _recipient, bytes calldata _identity) external;
 }
 
-
-
-
-
-
 contract Kort is ReentrancyGuard, ERC721URIStorage {
     address public owner; // one who created the contract
     address public cron; // one who created the contract
@@ -111,9 +106,9 @@ contract Kort is ReentrancyGuard, ERC721URIStorage {
             )
         )
     );
-    }
+
     // start case
-    function proposeCase(address _against, string[] memory options)
+    function proposeCase(address _against, string[] memory options,)
         public
         nonReentrant
     {
