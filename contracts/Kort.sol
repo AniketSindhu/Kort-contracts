@@ -61,6 +61,7 @@ contract Kort is ReentrancyGuard, ERC721URIStorage {
     // struct of a case
     struct Case {
         uint256 caseID;
+        string desc;
         address from;
         address against;
         string[] options; // basically here user will add possible resolves
@@ -106,9 +107,10 @@ contract Kort is ReentrancyGuard, ERC721URIStorage {
             )
         )
     );
+    }
 
     // start case
-    function proposeCase(address _against, string[] memory options,)
+    function proposeCase(string memory _desc,address _against, string[] memory options)
         public
         nonReentrant
     {
@@ -121,7 +123,9 @@ contract Kort is ReentrancyGuard, ERC721URIStorage {
         caseID.increment();
         Case storage currCase = cases[caseID.current()];
         currCase.caseID = caseID.current();
+        
         currCase.from = msg.sender;
+        currCase.desc = _desc;
         currCase.against = _against;
         currCase.options = options;
         currCase.status = Status.WAITING_FOR_APPROVAL;
@@ -287,6 +291,41 @@ contract Kort is ReentrancyGuard, ERC721URIStorage {
         stakeHolders[msg.sender] = 0;
         voters[msg.sender] = false;
     }
+
+
+
+    // function getCases()public view
+    // returns (Case[] storage){
+        
+    //     Case[] memory allCase;
+    //     for(int i = 0;i<caseID.current();i++){
+    //         Case memory currcase = cases[i];
+    //         allCase[i] = currcase;
+    //     }
+    //     return allCase;
+    // }
+
+    // function getAllagainstCases() public view returns (Case[] memory) {
+    //     uint totalCases = caseID.current();
+    //     uint currIndex = 0;
+    //     Case[] memory againstCase = new Case[] (totalCases);
+    //     for(uint i=0 ; i<totalCases ; i++)
+    //     {
+            
+    //         Case storage currCase = cases[i];
+    //         if(currCase.against == msg.sender && currCase.status ==Status.WAITING_FOR_APPROVAL){
+
+    //         againstCase[currIndex] = currCase;
+    //         currIndex += 1;
+    //         }
+    //     }
+    //     return againstCase;
+    // }
+
+
+
+
+
 
     /*     function getMessageHash(string memory _message, uint256 _nonce)
         internal
